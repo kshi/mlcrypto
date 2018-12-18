@@ -303,7 +303,7 @@ def mnist_blackbox(train_start=0, train_end=60000, test_start=0,
 
     orig_preds = binary_model.get_logits(x)
     perturb_preds = binary_model.get_logits(x_adv_sub)
-    orig_probs = tf.nn.softmax(binary_preds)[:, 1]
+    orig_probs = tf.nn.softmax(orig_preds)[:, 1]
     perturb_probs = tf.nn.softmax(perturb_preds)[:, 1]
     original, perturbed = sess.run([orig_probs, perturb_probs], feed_dict = {x: x_test})
     print('Average magnitude score change: ' + str(np.mean(np.abs(perturbed - original))))
