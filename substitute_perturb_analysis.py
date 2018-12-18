@@ -283,6 +283,12 @@ def mnist_blackbox(train_start=0, train_end=60000, test_start=0,
   # Train random binary classifiers to evaluate the perturbations.
   num_perturb_samples = 100
   num_adv_samples = len(x_test)
+  nb_filters = 64
+  train_params = {
+      'nb_epochs': nb_epochs,
+      'batch_size': batch_size,
+      'learning_rate': learning_rate
+  }
   D = np.zeros((num_adv_samples, num_perturb_samples))
   for i in range(num_perturb_samples):
     print('Training random model ' + str(i))
