@@ -32,6 +32,7 @@ from cleverhans_tutorials.tutorial_models import ModelBasicCNN
 
 FLAGS = flags.FLAGS
 
+NB_CODEWORDS = 5
 NB_CLASSES = 10
 BATCH_SIZE = 128
 LEARNING_RATE = .001
@@ -57,7 +58,7 @@ def setup_tutorial():
 
 def prep_bbox(sess, x, y, x_train, y_train, x_test, y_test,
               nb_epochs, batch_size, learning_rate,
-              rng, nb_classes=10, img_rows=28, img_cols=28, nchannels=1):
+              rng, nb_codewords, nb_classes=10, img_rows=28, img_cols=28, nchannels=1):
   """
   Define and train a model that simulates the "remote"
   black-box oracle described in the original paper.
@@ -77,15 +78,18 @@ def prep_bbox(sess, x, y, x_train, y_train, x_test, y_test,
 
   # Define TF model graph (for the black-box model)
   nb_filters = 64
-  nb_codewords = 40
   codewords = np.random.randint(0, 2, (nb_classes, nb_codewords))
   tf_codewords = tf.convert_to_tensor(codewords, tf.float32)
-  model = [ModelBasicCNN('model' + str(i), 2, nb_filters) for i in range(nb_codewords)]
-  loss = [CrossEntropy(model[i], smoothing=0.1) for i in range(nb_codewords)]
-  binary_probabilities = [tf.nn.softmax(model[i].get_logits(x))[:, 1] for i in range(nb_codewords)]
-  pc = tf.round(tf.transpose(tf.convert_to_tensor(binary_probabilities, tf.float32)))  # predicted codeword
-  sq_distance = tf.reduce_sum(tf.square(tf_codewords), axis=1) - 2 * tf.matmul(pc, tf.transpose(tf_codewords))
-  sq_distance = sq_distance + tf.reduce_sum(tf.square(pc), axis=1, keepdims=True)
+  model = [ModelBasicCNN('model' + str(i), 2, nb_filters)
+           for i in range(nb_codewords)]
+  loss = [CrossEntropy(model[i], smoothing=0.1)
+          for i in range(nb_codewords)]
+  binary_probabilities = [tf.nn.softmax(model[i].get_logits(x))[:, 0]
+                          for i in range(nb_codewords)]
+  predicted_codeword = tf.round(tf.transpose(tf.convert_to_tensor(binary_probabilities, tf.float32)))
+  sq_distance = (tf.reduce_sum(tf.square(tf_codewords), axis=1, keepdims=False)
+                 - 2 * tf.matmul(predicted_codeword, tf.transpose(tf_codewords)))
+  sq_distance = sq_distance + tf.reduce_sum(tf.square(predicted_codeword), axis=1, keepdims=True)
   predictions = tf.exp(-sq_distance)  # so that argmax picks the closest distance codeword
   print("Defined TensorFlow model graph.")
 
@@ -96,7 +100,7 @@ def prep_bbox(sess, x, y, x_train, y_train, x_test, y_test,
       'learning_rate': learning_rate
   }
   for i in range(nb_codewords):
-    print('Training binary filter ' + str(i+1) + ' of ' + str(nb_codewords))
+    print('Training binary filter {0} of {1}'.format(i+1, nb_codewords))
     indicators = np.inner(y_train, codewords[:, i])
     y_train_binary = np.vstack((indicators, 1 - indicators)).T
     train(sess, loss[i], x_train, y_train_binary, args=train_params, rng=rng)
@@ -107,8 +111,7 @@ def prep_bbox(sess, x, y, x_train, y_train, x_test, y_test,
                         args=eval_params)
   print('Test accuracy of black-box on legitimate test '
         'examples: ' + str(accuracy))
-
-  return model, predictions, accuracy
+  return model, tf_codewords, predictions, accuracy
 
 
 class ModelSubstitute(Model):
@@ -198,8 +201,8 @@ def train_sub(sess, x, y, bbox_preds, x_sub, y_sub, nb_classes,
   return model_sub, preds_sub
 
 
-def mnist_blackbox(train_start=0, train_end=60000, test_start=0,
-                   test_end=10000, nb_classes=NB_CLASSES,
+def mnist_blackbox(train_start=0, train_end=60000, test_start=0, test_end=10000,
+                   nb_codewords=NB_CODEWORDS, nb_classes=NB_CLASSES,
                    batch_size=BATCH_SIZE, learning_rate=LEARNING_RATE,
                    nb_epochs=NB_EPOCHS, holdout=HOLDOUT, data_aug=DATA_AUG,
                    nb_epochs_s=NB_EPOCHS_S, lmbda=LMBDA,
@@ -216,7 +219,6 @@ def mnist_blackbox(train_start=0, train_end=60000, test_start=0,
            * black-box model accuracy on adversarial examples transferred
              from the substitute model
   """
-
   # Set logging level to see debug information
   set_log_level(logging.DEBUG)
 
@@ -260,8 +262,8 @@ def mnist_blackbox(train_start=0, train_end=60000, test_start=0,
   print("Preparing the black-box model.")
   prep_bbox_out = prep_bbox(sess, x, y, x_train, y_train, x_test, y_test,
                             nb_epochs, batch_size, learning_rate,
-                            rng, nb_classes, img_rows, img_cols, nchannels)
-  model, bbox_preds, accuracies['bbox'] = prep_bbox_out
+                            rng, nb_codewords, nb_classes, img_rows, img_cols, nchannels)
+  model, tf_codewords, bbox_preds, accuracies['bbox'] = prep_bbox_out
 
   # Train substitute using method from https://arxiv.org/abs/1602.02697
   print("Training the substitute model.")
@@ -283,9 +285,16 @@ def mnist_blackbox(train_start=0, train_end=60000, test_start=0,
   # Craft adversarial examples using the substitute
   eval_params = {'batch_size': batch_size}
   x_adv_sub = fgsm.generate(x, **fgsm_par)
-
+  
   # Evaluate the accuracy of the "black-box" model on adversarial examples
-  accuracy = model_eval(sess, x, y, predictions(x_adv_sub),
+  adv_binary_probabilities = [tf.nn.softmax(model[i].get_logits(x_adv_sub))[:, 0]
+                              for i in range(nb_codewords)]
+  adv_predicted_codeword = tf.round(tf.transpose(tf.convert_to_tensor(adv_binary_probabilities, tf.float32)))
+  adv_sq_distance = (tf.reduce_sum(tf.square(tf_codewords), axis=1, keepdims=False)
+                     - 2 * tf.matmul(adv_predicted_codeword, tf.transpose(tf_codewords)))
+  adv_sq_distance = adv_sq_distance + tf.reduce_sum(tf.square(adv_predicted_codeword), axis=1, keepdims=True)
+  adv_predictions = tf.exp(-adv_sq_distance)  # so that argmax picks the closest distance codeword  
+  accuracy = model_eval(sess, x, y, adv_predictions,
                         x_test, y_test, args=eval_params)
   print('Test accuracy of oracle on adversarial examples generated '
         'using the substitute: ' + str(accuracy))
@@ -298,8 +307,8 @@ def main(argv=None):
   from cleverhans_tutorials import check_installation
   check_installation(__file__)
 
-  mnist_blackbox(nb_classes=FLAGS.nb_classes, batch_size=FLAGS.batch_size,
-                 learning_rate=FLAGS.learning_rate,
+  mnist_blackbox(nb_codewords=FLAGS.nb_codewords, nb_classes=FLAGS.nb_classes,
+                 batch_size=FLAGS.batch_size, learning_rate=FLAGS.learning_rate,
                  nb_epochs=FLAGS.nb_epochs, holdout=FLAGS.holdout,
                  data_aug=FLAGS.data_aug, nb_epochs_s=FLAGS.nb_epochs_s,
                  lmbda=FLAGS.lmbda, aug_batch_size=FLAGS.data_aug_batch_size)
@@ -308,6 +317,8 @@ def main(argv=None):
 if __name__ == '__main__':
 
   # General flags
+  flags.DEFINE_integer('nb_codewords', NB_CODEWORDS,
+                       'Length of random codeword')
   flags.DEFINE_integer('nb_classes', NB_CLASSES,
                        'Number of classes in problem')
   flags.DEFINE_integer('batch_size', BATCH_SIZE,
