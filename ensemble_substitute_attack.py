@@ -12,6 +12,7 @@ from __future__ import unicode_literals
 import functools
 import logging
 import numpy as np
+import pandas as pd
 from six.moves import xrange
 import tensorflow as tf
 from tensorflow.python.platform import flags
@@ -79,6 +80,8 @@ def prep_bbox(sess, x, y, x_train, y_train, x_test, y_test,
   # Define TF model graph (for the black-box model)
   nb_filters = 64
   codewords = np.random.randint(0, 2, (nb_classes, nb_codewords))
+  df_class_codewords = pd.DataFrame(codewords)
+  df_class_codewords.to_csv("results/{0}_class_codewords.csv".format(nb_codewords))
   tf_codewords = tf.convert_to_tensor(codewords, tf.float32)
   model = [ModelBasicCNN('model' + str(i), 2, nb_filters)
            for i in range(nb_codewords)]
@@ -299,7 +302,13 @@ def mnist_blackbox(train_start=0, train_end=60000, test_start=0, test_end=10000,
   print('Test accuracy of oracle on adversarial examples generated '
         'using the substitute: ' + str(accuracy))
   accuracies['bbox_on_sub_adv_ex'] = accuracy
-
+  adv_sq_distance_values, adv_predicted_codeword_values = sess.run([adv_sq_distance, adv_predicted_codeword], feed_dict = {x: x_test})
+  output = np.concatenate((adv_sq_distance_values, y_test), 1)
+  df = pd.DataFrame(output, columns=['d1', 'd2', 'd3', 'd4', 'd5', 'd6', 'd7', 'd8', 'd9', 'd0',
+                                     'y1', 'y2', 'y3', 'y4', 'y5', 'y6', 'y7', 'y8', 'y9', 'y0'])
+  df.to_csv("results/{0}_adv_hamming_distances.csv".format(nb_codewords))
+  df_pred_codeword = pd.DataFrame(adv_predicted_codeword_values)
+  df_pred_codeword.to_csv("results/{0}_adv_predicted_codeword.csv".format(nb_codewords))
   sess.close()
 
   return accuracies
