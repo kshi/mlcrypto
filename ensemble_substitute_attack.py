@@ -300,6 +300,8 @@ def mnist_blackbox(train_start=0, train_end=60000, test_start=0, test_end=10000,
         'using the substitute: ' + str(accuracy))
   accuracies['bbox_on_sub_adv_ex'] = accuracy
 
+  sess.close()
+
   return accuracies
 
 

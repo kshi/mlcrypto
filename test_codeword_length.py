@@ -16,9 +16,9 @@ save_path = "results/codeword_length.csv"
 
 if not os.path.exists(save_path):
     with open(save_path, "w") as outfile:
-        outfile.write("code_length,accuracy,adv_accuracy")
+        outfile.write("code_length,accuracy,adv_accuracy\n")
 
-CODEWORD_LENGTHS = ['8', '16', '32', '64', '128', '256']
+CODEWORD_LENGTHS = ['32', '64', '128', '256']
 if len(sys.argv) > 1:
     CODEWORD_LENGTHS = sys.argv[1:]
 
