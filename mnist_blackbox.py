@@ -286,11 +286,14 @@ def main(argv=None):
   from cleverhans_tutorials import check_installation
   check_installation(__file__)
 
-  mnist_blackbox(nb_classes=FLAGS.nb_classes, batch_size=FLAGS.batch_size,
-                 learning_rate=FLAGS.learning_rate,
-                 nb_epochs=FLAGS.nb_epochs, holdout=FLAGS.holdout,
-                 data_aug=FLAGS.data_aug, nb_epochs_s=FLAGS.nb_epochs_s,
-                 lmbda=FLAGS.lmbda, aug_batch_size=FLAGS.data_aug_batch_size)
+  accuracies = mnist_blackbox(nb_classes=FLAGS.nb_classes, batch_size=FLAGS.batch_size,
+                              learning_rate=FLAGS.learning_rate,
+                              nb_epochs=FLAGS.nb_epochs, holdout=FLAGS.holdout,
+                              data_aug=FLAGS.data_aug, nb_epochs_s=FLAGS.nb_epochs_s,
+                              lmbda=FLAGS.lmbda, aug_batch_size=FLAGS.data_aug_batch_size)
+  with open("results/codeword_length.csv", "a") as outfile:
+    outfile.write('{0},{1},{2}'.format(
+      1, accuracies['bbox'], accuracies['bbox_on_sub_adv_ex']))
 
 
 if __name__ == '__main__':
