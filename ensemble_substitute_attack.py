@@ -114,6 +114,15 @@ def prep_bbox(sess, x, y, x_train, y_train, x_test, y_test,
                         args=eval_params)
   print('Test accuracy of black-box on legitimate test '
         'examples: ' + str(accuracy))
+
+  sq_distance_values, predicted_codeword_values = sess.run([sq_distance, predicted_codeword], feed_dict = {x: x_test})
+  output = np.concatenate((sq_distance_values, y_test), 1)
+  df = pd.DataFrame(output, columns=['d1', 'd2', 'd3', 'd4', 'd5', 'd6', 'd7', 'd8', 'd9', 'd0',
+                                     'y1', 'y2', 'y3', 'y4', 'y5', 'y6', 'y7', 'y8', 'y9', 'y0'])
+  df.to_csv("results/{0}_hamming_distances.csv".format(nb_codewords))
+  df_pred_codeword = pd.DataFrame(predicted_codeword_values)
+  df_pred_codeword.to_csv("results/{0}_predicted_codeword.csv".format(nb_codewords))
+  
   return model, tf_codewords, predictions, accuracy
 
 
