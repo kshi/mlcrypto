@@ -74,7 +74,6 @@ class WeightedCrossEntropy(Loss):
     self.weights = kwargs['label_weights']
     self.code = tf.constant((np.sign(self.weights) + 1) / 2, dtype=tf.float32)
     self.abs_weights = tf.constant(np.abs(self.weights), dtype=tf.float32)
-    print(self.weights)
     
   def fprop(self, x, y, **kwargs):
     kwargs.update(self.kwargs)
@@ -87,7 +86,7 @@ class WeightedCrossEntropy(Loss):
       yt -= self.smoothing * (yt - 1. / tf.cast(yt.shape[-1], yt.dtype))
     except RuntimeError:
       yt.assign_sub(self.smoothing * (yt - 1. / tf.cast(yt.shape[-1],
-                                                        yt.dtype)))    
+                                                        yt.dtype)))
 
     logit = self.model.get_logits(x, **kwargs)
     #loss = tf.reduce_mean(softmax_cross_entropy_with_logits(labels=yt, logits=logit))
@@ -124,7 +123,7 @@ def prep_bbox(sess, x, y, x_train, y_train, x_test, y_test,
   tf_codewords = tf.convert_to_tensor(codewords, tf.float32)
   model = [ModelBasicCNN('model' + str(i), 2, nb_filters)
            for i in range(nb_codewords)]
-  loss = [WeightedCrossEntropy(model[i], smoothing=0.1, label_weights= gaussian_codewords[:, i])
+  loss = [WeightedCrossEntropy(model[i], smoothing=0.1, label_weights=gaussian_codewords[:, i])
           for i in range(nb_codewords)]
   binary_probabilities = [tf.nn.softmax(model[i].get_logits(x))[:, 0]
                           for i in range(nb_codewords)]
