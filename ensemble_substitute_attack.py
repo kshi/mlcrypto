@@ -71,17 +71,17 @@ class WeightedCrossEntropy(Loss):
     self.adv_coeff = adv_coeff
     self.pass_y = pass_y
     self.attack_params = attack_params
-
+    self.weights = kwargs['label_weights']
+    self.code = tf.constant((np.sign(self.weights) + 1) / 2, dtype=tf.float32)
+    self.abs_weights = tf.constant(np.abs(self.weights), dtype=tf.float32)
+    print(self.weights)
+    
   def fprop(self, x, y, **kwargs):
     kwargs.update(self.kwargs)
-    weights = kwargs['label_weights']
-    code = tf.constant(np.sign(weights), dtype=tf.float32)
-    abs_weights = tf.constant(np.abs(weights), dtype=tf.float32)
-    
     numerical_label = tf.argmax(y, axis=1)
-    y_binary = tf.gather(code, numerical_label)
+    y_binary = tf.gather(self.code, numerical_label)
     yt = tf.stack([y_binary, 1-y_binary], axis=1)
-    w = tf.gather(abs_weights, numerical_label)
+    w = tf.gather(self.abs_weights, numerical_label)
 
     try:
       yt -= self.smoothing * (yt - 1. / tf.cast(yt.shape[-1], yt.dtype))
@@ -90,7 +90,7 @@ class WeightedCrossEntropy(Loss):
                                                         yt.dtype)))    
 
     logit = self.model.get_logits(x, **kwargs)
-    #loss = sum(tf.reduce_mean(softmax_cross_entropy_with_logits(labels=y, logits=logit))
+    #loss = tf.reduce_mean(softmax_cross_entropy_with_logits(labels=yt, logits=logit))
     loss = tf.reduce_mean(tf.multiply(w, softmax_cross_entropy_with_logits(labels=yt, logits=logit)))
     return loss
 
@@ -124,7 +124,7 @@ def prep_bbox(sess, x, y, x_train, y_train, x_test, y_test,
   tf_codewords = tf.convert_to_tensor(codewords, tf.float32)
   model = [ModelBasicCNN('model' + str(i), 2, nb_filters)
            for i in range(nb_codewords)]
-  loss = [WeightedCrossEntropy(model[i], smoothing=0.1)
+  loss = [WeightedCrossEntropy(model[i], smoothing=0.1, label_weights= gaussian_codewords[:, i])
           for i in range(nb_codewords)]
   binary_probabilities = [tf.nn.softmax(model[i].get_logits(x))[:, 0]
                           for i in range(nb_codewords)]
@@ -144,9 +144,7 @@ def prep_bbox(sess, x, y, x_train, y_train, x_test, y_test,
 
   for i in range(nb_codewords):
     print('Training binary filter {0} of {1}'.format(i+1, nb_codewords))
-    train(sess, loss[i], x_train, y_train,
-          fprop_args={'label_weights': np.abs(gaussian_codewords[:, i])},
-          args=train_params, rng=rng)
+    train(sess, loss[i], x_train, y_train, args=train_params, rng=rng)
 
   # Print out the accuracy on legitimate data
   eval_params = {'batch_size': batch_size}
